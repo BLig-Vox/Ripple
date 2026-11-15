@@ -1,2 +1,3 @@
 # Ripple
-A Rust-based terminal emulator inspired by Joseph Joestar's Ripple technique.
+
+A Rust-based terminal emulator inspired by Ripple energy.
