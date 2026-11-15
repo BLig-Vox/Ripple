@@ -2,6 +2,27 @@
 
 A Rust terminal emulator with a GPU-rendered interface and a simple workflow.
 
+![Ripple running on Linux](assets/screenshots/ripple-linux.png)
+
+## Download
+
+Get the Linux x86_64 build from [GitHub Releases](https://github.com/BLig-Vox/Ripple/releases). Version 0.1.0 is an early prerelease. The binary is built on Ubuntu 24.04 and requires glibc 2.39 or newer, an X11 or Wayland desktop, and a working Vulkan or EGL/OpenGL graphics driver. Other Linux distributions have not been verified.
+
+```sh
+sha256sum -c SHA256SUMS
+tar -xzf ripple-v0.1.0-linux-x86_64.tar.gz
+cd ripple-v0.1.0-linux-x86_64
+./ripple
+```
+
+To put the binary on your PATH:
+
+```sh
+install -Dm755 ripple "$HOME/.local/bin/ripple"
+```
+
+For application menu and desktop integration, use the source installer below.
+
 ## Current state
 
 The first Linux prototype uses `eframe` with its wgpu renderer and a custom wgpu pass for cell backgrounds and the cursor. It launches the default shell through a PTY, parses a starter ANSI/VT subset, and provides bounded scrollback, drag selection, and clipboard shortcuts. It opens at 80% of the active monitor's dimensions and centers itself on that monitor.
@@ -42,3 +63,7 @@ Run `./scripts/install-desktop.sh` to build a release binary and install Ripple 
 ## Full-screen applications
 
 Ripple recognizes the alternate-screen sequences used by Neovim (`?1049h` / `?1049l`). The shell screen is restored on exit, and alternate-screen output never enters shell scrollback. Scrolling regions, reverse index, line insertion/deletion, cursor visibility, application cursor keys, basic terminal replies, truecolor, and bracketed paste are supported. Wheel events go to applications that enable mouse reporting; otherwise alternate-screen wheel input sends cursor keys. This remains a limited VT implementation.
+
+## License
+
+Ripple is licensed under the [MIT License](LICENSE.md).
