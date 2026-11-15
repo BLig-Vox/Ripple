@@ -18,6 +18,22 @@ The Arch package workflow builds the same recipe in an Arch Linux container and
 checks that `.SRCINFO` matches `makepkg --printsrcinfo`. This checks package
 creation; it does not exercise a GPU or graphical desktop on Arch.
 
+## Verified build
+
+[GitHub Actions run 43752946785](https://github.com/BLig-Vox/Ripple/actions/runs/43752946785)
+built version 0.1.0-1 from the tagged source using Arch's makepkg and Rust 1.100.0.
+Source checksums, dependency checks, package creation, and the `.SRCINFO`
+comparison passed. The workflow listed the package metadata and installed paths.
+This does not verify graphical operation on an Arch desktop.
+
+The package and its SHA-256 file are attached to the v0.1.0 GitHub release.
+Download both, verify the checksum, and install with:
+
+```sh
+sha256sum -c vox-ripple-0.1.0-1-x86_64.pkg.tar.zst.sha256
+sudo pacman -U ./vox-ripple-0.1.0-1-x86_64.pkg.tar.zst
+```
+
 ## Publish to AUR
 
 An AUR account with an authorized SSH public key is required. Check whether the

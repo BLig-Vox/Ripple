@@ -32,7 +32,9 @@ This is an early prototype, not yet a feature-complete terminal. Current limitat
 ## Arch Linux packaging
 
 The source package recipe is in [packaging/arch](packaging/arch/README.md).
-It is being prepared for the AUR as `vox-ripple`; it has **not been published to the AUR yet**.
+An Arch-built `vox-ripple` package and checksum are available on the
+[v0.1.0 release](https://github.com/BLig-Vox/Ripple/releases/tag/v0.1.0).
+It has **not been published to the AUR yet**; new account registration is temporarily closed.
 
 ## Build and run
 
