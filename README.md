@@ -1,3 +1,44 @@
 # Ripple
 
-A Rust-based terminal emulator inspired by Ripple energy.
+A Rust terminal emulator with a GPU-rendered interface and a simple workflow.
+
+## Current state
+
+The first Linux prototype uses `eframe` with its wgpu renderer and a custom wgpu pass for cell backgrounds and the cursor. It launches the default shell through a PTY, parses a starter ANSI/VT subset, and provides bounded scrollback, drag selection, and clipboard shortcuts. It opens at 80% of the active monitor's dimensions and centers itself on that monitor.
+
+This is an early prototype, not yet a feature-complete terminal. Current limitations include single-window operation, incomplete VT compatibility, no shaped GPU glyph atlas, and no advanced terminal graphics protocols.
+
+## Build and run
+
+Install a recent stable Rust toolchain and the Linux development libraries required by winit/wgpu. Then run:
+
+```sh
+cargo run --release
+```
+
+The window uses wgpu through eframe. Vulkan or a supported desktop graphics backend must be available.
+
+## Appearance and shortcuts
+
+Ripple opens as one plain terminal surface with a native title bar and 8 pixels of padding. There are no permanent toolbars or status badges. Drag to select text, use Ctrl+Shift+C to copy, Ctrl+Shift+V to paste, and the mouse wheel for scrollback.
+
+## Memory and session lifecycle
+
+PTY output uses a bounded 32-chunk queue (8 KiB per chunk). Scrollback is limited to 2,000 lines and 8 MiB of retained cell storage, whichever is reached first. The visible grid is limited to 512 columns and 256 rows. GPU vertex buffers grow only to the visible grid's needs and are owned by the renderer.
+
+Session shutdown cancels the reader, joins its thread, and terminates and reaps the shell. Reader waits and queue sends check cancellation every 50 ms. Regression tests repeatedly open and close sessions with both idle and saturated output and check child processes, thread counts, and file descriptors.
+
+```sh
+cargo test -- --test-threads=1
+python3 scripts/memory-soak.py <ripple-pid> 60
+```
+
+The sampler reports Linux RSS, thread counts, and descriptor counts. RSS includes graphics-driver caches and allocator retention; a short stable run does not prove the absence of every possible leak.
+
+## Desktop launcher
+
+Run `./scripts/install-desktop.sh` to build a release binary and install Ripple for the current user. The installer adds an application menu entry, a desktop shortcut, and the logo. Use `--debug` for a development build. Rust, Python 3, and the Linux build prerequisites above must be installed.
+
+## Full-screen applications
+
+Ripple recognizes the alternate-screen sequences used by Neovim (`?1049h` / `?1049l`). The shell screen is restored on exit, and alternate-screen output never enters shell scrollback. Scrolling regions, reverse index, line insertion/deletion, cursor visibility, application cursor keys, basic terminal replies, truecolor, and bracketed paste are supported. Wheel events go to applications that enable mouse reporting; otherwise alternate-screen wheel input sends cursor keys. This remains a limited VT implementation.

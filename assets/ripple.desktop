@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Ripple
+Comment=A simple Rust terminal emulator
+Exec=ripple
+TryExec=ripple
+Icon=ripple
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupNotify=true
+StartupWMClass=ripple
+Keywords=terminal;shell;console;
