@@ -8,7 +8,7 @@ url='https://github.com/BLig-Vox/Ripple'
 license=('MIT')
 depends=('gcc-libs' 'glibc' 'fontconfig' 'libxkbcommon' 'libx11' 'libxcursor'
          'libxi' 'libxrandr' 'wayland' 'libglvnd' 'vulkan-icd-loader')
-makedepends=('cargo>=1.95' 'pkgconf')
+makedepends=('cargo' 'pkgconf')
 provides=('ripple-terminal')
 conflicts=('ripple-terminal' 'vox-ripple-bin' 'vox-ripple-git')
 source=("ripple-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
