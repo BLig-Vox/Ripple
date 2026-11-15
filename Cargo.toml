@@ -1,7 +1,24 @@
 [package]
-name = "ripple-terminal"
+name = "vox-ripple"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.95"
+authors = ["Alexander Vox <alexander.vox.great@gmail.com>"]
+repository = "https://github.com/BLig-Vox/Ripple"
+readme = "README.md"
+keywords = ["terminal", "gpu", "wgpu", "pty", "linux"]
+categories = ["command-line-utilities"]
+include = [
+    "Cargo.toml",
+    "Cargo.lock",
+    "LICENSE.md",
+    "README.md",
+    "src/**",
+    "assets/branding/ripple-logo.png",
+    "assets/screenshots/ripple-linux.png",
+    "assets/ripple.desktop",
+    "scripts/install-desktop.sh",
+]
 description = "A Rust terminal emulator with a GPU-rendered interface"
 license = "MIT"
 

@@ -36,6 +36,26 @@ An Arch-built `vox-ripple` package and checksum are available on the
 [v0.1.0 release](https://github.com/BLig-Vox/Ripple/releases/tag/v0.1.0).
 It has **not been published to the AUR yet**; new account registration is temporarily closed.
 
+## Cargo installation
+
+With Rust 1.95 or newer and the Linux graphics dependencies installed:
+
+```sh
+cargo install vox-ripple --locked
+ripple
+```
+
+Cargo installs the `ripple` executable into `~/.cargo/bin` by default. Ensure that
+directory is on your PATH. Cargo does not install desktop shortcuts or system
+libraries. For desktop integration, clone this repository and run the source
+installer below.
+
+For installation directly from the existing GitHub release:
+
+```sh
+cargo install --git https://github.com/BLig-Vox/Ripple --tag v0.1.0 --locked --bin ripple
+```
+
 ## Build and run
 
 Install a recent stable Rust toolchain and the Linux development libraries required by winit/wgpu. Then run:
