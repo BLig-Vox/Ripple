@@ -1,0 +1,28 @@
+pkgbase = vox-ripple
+	pkgdesc = A simple Rust terminal emulator with a GPU-rendered interface
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/BLig-Vox/Ripple
+	arch = x86_64
+	license = MIT
+	makedepends = cargo>=1.95
+	makedepends = pkgconf
+	depends = gcc-libs
+	depends = glibc
+	depends = fontconfig
+	depends = libxkbcommon
+	depends = libx11
+	depends = libxcursor
+	depends = libxi
+	depends = libxrandr
+	depends = wayland
+	depends = libglvnd
+	depends = vulkan-icd-loader
+	provides = ripple-terminal
+	conflicts = ripple-terminal
+	conflicts = vox-ripple-bin
+	conflicts = vox-ripple-git
+	source = ripple-0.1.0.tar.gz::https://github.com/BLig-Vox/Ripple/archive/refs/tags/v0.1.0.tar.gz
+	sha256sums = 8dbb8346fc61c99ad6e91bfba64f9d291ac55162db67cf2a72eff58d1eabe54
+
+pkgname = vox-ripple

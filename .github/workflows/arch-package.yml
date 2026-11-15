@@ -1,0 +1,42 @@
+name: Arch package
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - packaging/arch/**
+      - .github/workflows/arch-package.yml
+  pull_request:
+    paths:
+      - packaging/arch/**
+      - .github/workflows/arch-package.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install build and runtime dependencies
+        run: >-
+          pacman -Syu --noconfirm --needed git rust pkgconf
+          fontconfig libxkbcommon libx11 libxcursor libxi libxrandr
+          wayland libglvnd vulkan-icd-loader
+      - uses: actions/checkout@v4
+      - name: Build as an unprivileged user
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          cd packaging/arch/vox-ripple
+          runuser -u builder -- makepkg --noconfirm
+          runuser -u builder -- makepkg --printsrcinfo > generated.SRCINFO
+          diff -u .SRCINFO generated.SRCINFO
+          pacman -Qip vox-ripple-*.pkg.tar.zst
+          pacman -Qlp vox-ripple-*.pkg.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vox-ripple-arch
+          path: packaging/arch/vox-ripple/vox-ripple-*.pkg.tar.zst
+          if-no-files-found: error

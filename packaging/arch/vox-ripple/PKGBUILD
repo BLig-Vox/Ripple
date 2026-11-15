@@ -1,0 +1,37 @@
+# Maintainer: Alexander Vox <alexander.vox.great@gmail.com>
+pkgname=vox-ripple
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='A simple Rust terminal emulator with a GPU-rendered interface'
+arch=('x86_64')
+url='https://github.com/BLig-Vox/Ripple'
+license=('MIT')
+depends=('gcc-libs' 'glibc' 'fontconfig' 'libxkbcommon' 'libx11' 'libxcursor'
+         'libxi' 'libxrandr' 'wayland' 'libglvnd' 'vulkan-icd-loader')
+makedepends=('cargo>=1.95' 'pkgconf')
+provides=('ripple-terminal')
+conflicts=('ripple-terminal' 'vox-ripple-bin' 'vox-ripple-git')
+source=("ripple-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('8dbb8346fc61c99ad6e91bfba64f9d291ac55162db67cf2a72eff58d1eabe54')
+
+prepare() {
+    cd "Ripple-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target x86_64-unknown-linux-gnu
+}
+
+build() {
+    cd "Ripple-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --release --frozen --bin ripple
+}
+
+package() {
+    cd "Ripple-${pkgver}"
+    install -Dm755 target/release/ripple "${pkgdir}/usr/bin/ripple"
+    install -Dm644 assets/ripple.desktop "${pkgdir}/usr/share/applications/ripple.desktop"
+    install -Dm644 assets/branding/ripple-logo.png "${pkgdir}/usr/share/pixmaps/ripple.png"
+    install -Dm644 LICENSE.md "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.md"
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}

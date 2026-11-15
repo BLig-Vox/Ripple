@@ -29,6 +29,11 @@ The first Linux prototype uses `eframe` with its wgpu renderer and a custom wgpu
 
 This is an early prototype, not yet a feature-complete terminal. Current limitations include single-window operation, incomplete VT compatibility, no shaped GPU glyph atlas, and no advanced terminal graphics protocols.
 
+## Arch Linux packaging
+
+The source package recipe is in [packaging/arch](packaging/arch/README.md).
+It is being prepared for the AUR as `vox-ripple`; it has **not been published to the AUR yet**.
+
 ## Build and run
 
 Install a recent stable Rust toolchain and the Linux development libraries required by winit/wgpu. Then run:
