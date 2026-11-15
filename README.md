@@ -50,7 +50,7 @@ set -eu
 
 # 1. Install the terminal.
 ripple_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-cargo install vox-ripple --version 0.1.0 --locked --root "$ripple_cargo_home"
+cargo install vox-ripple --version 0.1.1 --locked --root "$ripple_cargo_home"
 ripple_data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
 ripple_desktop_dir="$(xdg-user-dir DESKTOP 2>/dev/null || printf '%s/Desktop' "$HOME")"
 ripple_tmp="$(mktemp -d)"
@@ -131,6 +131,20 @@ The window uses wgpu through eframe. Vulkan or a supported desktop graphics back
 ## Appearance and shortcuts
 
 Ripple opens as one plain terminal surface with a native title bar and 8 pixels of padding. There are no permanent toolbars or status badges. Drag to select text, use Ctrl+Shift+C to copy, Ctrl+Shift+V to paste, and the mouse wheel for scrollback.
+
+## Clipboard images
+
+Ctrl+Shift+V accepts text or an image. Image clipboard data is saved as a private
+temporary PNG and its file path is pasted into the terminal. Applications that
+accept image paths, including Codex CLI, can attach that file. Ripple does not
+send binary image bytes to the shell. Ctrl+V remains a raw control key for the
+foreground application.
+
+Images stay readable until the Ripple window closes normally, then the temporary
+files are removed. Image pastes are limited to 32 files and 64 MiB of saved PNGs
+per window, with a 16-megapixel limit per image. The temporary path is local to
+the machine running Ripple. Successful paste also clears an earlier clipboard
+error message.
 
 ## Memory and session lifecycle
 

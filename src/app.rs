@@ -1,6 +1,7 @@
 use eframe::egui::{self, Color32, FontId, Key, Stroke, Vec2};
 
 use crate::{
+    clipboard::ClipboardPaste,
     terminal::{Rgb, TerminalGpuRenderer, TerminalGrid, TerminalSession, gpu_cell_paint_callback},
     window_geometry,
 };
@@ -26,6 +27,7 @@ pub struct RippleApp {
     selection: Option<(CellPosition, CellPosition)>,
     scroll_offset: usize,
     wheel_remainder: f32,
+    clipboard_paste: ClipboardPaste,
 }
 
 impl RippleApp {
@@ -50,6 +52,7 @@ impl RippleApp {
             selection: None,
             scroll_offset: 0,
             wheel_remainder: 0.0,
+            clipboard_paste: ClipboardPaste::default(),
         }
     }
 
@@ -146,13 +149,14 @@ impl RippleApp {
     }
 
     fn paste_clipboard(&mut self) {
-        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.get_text()) {
+        match self.clipboard_paste.read() {
             Ok(text) => self.paste_text(&text),
             Err(error) => self.error = Some(format!("Clipboard unavailable: {error}")),
         }
     }
 
     fn paste_text(&mut self, text: &str) {
+        self.error = None;
         if self.terminal.bracketed_paste {
             let paste = format!("\x1b[200~{}\x1b[201~", text.replace("\x1b", ""));
             self.send_input(paste.as_bytes());

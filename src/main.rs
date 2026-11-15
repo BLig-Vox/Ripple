@@ -1,4 +1,5 @@
 mod app;
+mod clipboard;
 mod terminal;
 mod window_geometry;
 
