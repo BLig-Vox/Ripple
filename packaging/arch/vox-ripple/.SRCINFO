@@ -23,6 +23,6 @@ pkgbase = vox-ripple
 	conflicts = vox-ripple-bin
 	conflicts = vox-ripple-git
 	source = ripple-0.1.0.tar.gz::https://github.com/BLig-Vox/Ripple/archive/refs/tags/v0.1.0.tar.gz
-	sha256sums = 8dbb8346fc61c99ad6e91bfba64f9d291ac55162db67cf2a72eff58d1eabe54
+	sha256sums = 8dbb8346fc61c99ad6e91bfba64f9d291ac55162db67cf2a72eff58d1aeaeb54
 
 pkgname = vox-ripple

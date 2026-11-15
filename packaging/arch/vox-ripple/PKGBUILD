@@ -12,7 +12,7 @@ makedepends=('cargo' 'pkgconf')
 provides=('ripple-terminal')
 conflicts=('ripple-terminal' 'vox-ripple-bin' 'vox-ripple-git')
 source=("ripple-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('8dbb8346fc61c99ad6e91bfba64f9d291ac55162db67cf2a72eff58d1eabe54')
+sha256sums=('8dbb8346fc61c99ad6e91bfba64f9d291ac55162db67cf2a72eff58d1aeaeb54')
 
 prepare() {
     cd "Ripple-${pkgver}"
