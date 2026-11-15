@@ -38,17 +38,79 @@ It has **not been published to the AUR yet**; new account registration is tempor
 
 ## Cargo installation
 
-With Rust 1.95 or newer and the Linux graphics dependencies installed:
+Linux prerequisites: Rust 1.95 or newer, a C build toolchain, `curl`, Python 3,
+and the graphics libraries/driver required by winit/wgpu. Run this as your normal
+user. It installs Ripple, adds the application menu entry and logo, creates a
+desktop shortcut, then clears Cargo's downloaded crate archives and extracted
+crate sources. Run it when no other Cargo builds are active.
 
-```sh
-cargo install vox-ripple --locked
-ripple
+```bash
+(
+set -eu
+
+# 1. Install the terminal.
+ripple_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+cargo install vox-ripple --version 0.1.0 --locked --root "$ripple_cargo_home"
+ripple_data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+ripple_desktop_dir="$(xdg-user-dir DESKTOP 2>/dev/null || printf '%s/Desktop' "$HOME")"
+ripple_tmp="$(mktemp -d)"
+trap 'rm -rf -- "$ripple_tmp"' EXIT
+
+# 2. Install the logo and launchers without rebuilding Ripple.
+curl -fL https://raw.githubusercontent.com/BLig-Vox/Ripple/v0.1.0/assets/branding/ripple-logo.png \
+  -o "$ripple_tmp/ripple.png"
+install -Dm644 "$ripple_tmp/ripple.png" "$ripple_data_home/pixmaps/ripple.png"
+
+python3 - "$ripple_cargo_home/bin/ripple" "$ripple_data_home" "$ripple_desktop_dir" <<'PYTHON'
+import pathlib
+import sys
+
+binary, data, desktop = map(pathlib.Path, sys.argv[1:])
+if not binary.is_file():
+    raise SystemExit(f"Installed executable not found: {binary}")
+
+def value(text):
+    return str(text).replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r")
+
+def command(path):
+    text = str(path).replace("\\", "\\\\").replace('"', '\\"')
+    text = text.replace("$", "\\$").replace("`", "\\`").replace("%", "%%")
+    return value('"' + text + '"')
+
+entry = ("[Desktop Entry]\nType=Application\nName=Ripple\n"
+         "Comment=A simple Rust terminal emulator\n"
+         f"Exec={command(binary)}\nTryExec={value(binary)}\n"
+         f"Icon={value(data / 'pixmaps/ripple.png')}\n"
+         "Terminal=false\nCategories=System;TerminalEmulator;\n"
+         "StartupNotify=true\nStartupWMClass=ripple\n")
+for destination in (data / "applications/ripple.desktop", desktop / "ripple.desktop"):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(entry)
+    destination.chmod(0o755)
+PYTHON
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$ripple_data_home/applications"
+fi
+if command -v gio >/dev/null 2>&1; then
+    gio set "$ripple_desktop_dir/ripple.desktop" metadata::trusted true 2>/dev/null || true
+fi
+
+# 3. Clear downloaded crate caches; keep installed programs and Cargo settings.
+rm -rf -- "$ripple_cargo_home/registry/cache" "$ripple_cargo_home/registry/src"
+printf 'Installed Ripple with its logo and desktop launchers.\n'
+)
 ```
 
-Cargo installs the `ripple` executable into `~/.cargo/bin` by default. Ensure that
-directory is on your PATH. Cargo does not install desktop shortcuts or system
-libraries. For desktop integration, clone this repository and run the source
-installer below.
+Launch **Ripple** from your application menu, or run
+`"${CARGO_HOME:-$HOME/.cargo}/bin/ripple"`. Some desktop environments require
+right-clicking the desktop shortcut and choosing **Allow Launching**. Hidden
+desktop icons stay hidden.
+
+Cache cleanup affects all downloaded registry crates, so future Cargo builds may
+need to download them again. It keeps the registry index, Git caches, installed
+binaries, Rust toolchains, credentials, and installation records. It does not
+remove existing project `target` directories or a custom `CARGO_TARGET_DIR`.
 
 For installation directly from the existing GitHub release:
 
