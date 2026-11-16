@@ -1,6 +1,6 @@
 [package]
 name = "vox-ripple"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.95"
 authors = ["Alexander Vox <alexander.vox.great@gmail.com>"]
@@ -15,6 +15,8 @@ include = [
     "README.md",
     "src/**",
     "assets/branding/ripple-logo.png",
+    "assets/fonts/**",
+    "CHANGELOG.md",
     "assets/screenshots/ripple-linux.png",
     "assets/ripple.desktop",
     "scripts/install-desktop.sh",

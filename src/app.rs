@@ -8,7 +8,6 @@ use crate::{
 
 const INITIAL_COLUMNS: usize = 100;
 const INITIAL_ROWS: usize = 30;
-const CELL_WIDTH: f32 = 9.2;
 const CELL_HEIGHT: f32 = 19.0;
 const TERMINAL_FONT_SIZE: f32 = 15.0;
 
@@ -33,6 +32,20 @@ pub struct RippleApp {
 impl RippleApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         window_geometry::apply_initial_geometry(cc);
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "ripple-mono".into(),
+            egui::FontData::from_static(include_bytes!(
+                "../assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf"
+            ))
+            .into(),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "ripple-mono".into());
+        cc.egui_ctx.set_fonts(fonts);
         let terminal = TerminalGrid::new(INITIAL_COLUMNS, INITIAL_ROWS);
         let repaint_context = cc.egui_ctx.clone();
         let (session, session_error) =
@@ -197,7 +210,7 @@ impl RippleApp {
     }
 
     fn update_terminal_size(&mut self, ctx: &egui::Context, available: Vec2) {
-        let columns = ((available.x - 16.0) / CELL_WIDTH).floor().max(1.0) as usize;
+        let columns = ((available.x - 16.0) / cell_width(ctx)).floor().max(1.0) as usize;
         let rows = ((available.y - 16.0) / CELL_HEIGHT).floor().max(1.0) as usize;
         if self.terminal.dimensions() == (columns, rows) {
             return;
@@ -238,7 +251,7 @@ impl RippleApp {
             painter.add(gpu_cell_paint_callback(
                 rect,
                 &self.terminal,
-                CELL_WIDTH,
+                cell_width(ui.ctx()),
                 CELL_HEIGHT,
                 origin,
                 self.scroll_offset,
@@ -248,33 +261,22 @@ impl RippleApp {
         }
         let font = FontId::monospace(TERMINAL_FONT_SIZE);
 
+        // Position each glyph on the same measured grid as backgrounds and the cursor.
+        // Color-run shaping can otherwise change advances at a run boundary.
+        let width = cell_width(ui.ctx());
         for row_index in 0..self.terminal.dimensions().1 {
             let row = self.terminal.visible_line(row_index, self.scroll_offset);
-            let mut column_index = 0;
-            while column_index < row.len().min(self.terminal.dimensions().0) {
-                let run_start = column_index;
-                let foreground = row[column_index].foreground;
-                column_index += 1;
-                while column_index < row.len().min(self.terminal.dimensions().0)
-                    && row[column_index].foreground == foreground
-                {
-                    column_index += 1;
-                }
-                let run = &row[run_start..column_index];
-                if run.iter().any(|cell| cell.character != ' ') {
-                    let text: String = run.iter().map(|cell| cell.character).collect();
+            for (column, cell) in row.iter().take(self.terminal.dimensions().0).enumerate() {
+                if cell.character != ' ' {
                     let position = rect.min
                         + origin
-                        + Vec2::new(
-                            run_start as f32 * CELL_WIDTH,
-                            row_index as f32 * CELL_HEIGHT,
-                        );
+                        + Vec2::new(column as f32 * width, row_index as f32 * CELL_HEIGHT);
                     painter.text(
                         position,
                         egui::Align2::LEFT_TOP,
-                        text,
+                        cell.character,
                         font.clone(),
-                        to_color32(foreground),
+                        to_color32(cell.foreground),
                     );
                 }
             }
@@ -285,7 +287,7 @@ impl RippleApp {
             let cursor_position = rect.min
                 + origin
                 + Vec2::new(
-                    cursor_column as f32 * CELL_WIDTH,
+                    cursor_column as f32 * cell_width(ui.ctx()),
                     cursor_row as f32 * CELL_HEIGHT,
                 );
             painter.line_segment(
@@ -316,14 +318,14 @@ impl eframe::App for RippleApp {
         }
         if response.drag_started_by(egui::PointerButton::Primary) {
             if let Some(pointer) = response.interact_pointer_pos() {
-                let point = pointer_to_cell(pointer, terminal, &self.terminal);
+                let point = pointer_to_cell(pointer, terminal, &self.terminal, cell_width(&ctx));
                 self.selection = Some((point, point));
             }
         } else if response.dragged_by(egui::PointerButton::Primary) {
             if let (Some((start, _)), Some(pointer)) =
                 (self.selection, response.interact_pointer_pos())
             {
-                let end = pointer_to_cell(pointer, terminal, &self.terminal);
+                let end = pointer_to_cell(pointer, terminal, &self.terminal, cell_width(&ctx));
                 self.selection = Some((start, end));
             }
         } else if response.clicked() {
@@ -338,7 +340,7 @@ impl eframe::App for RippleApp {
                     let pointer = ctx
                         .input(|input| input.pointer.hover_pos())
                         .unwrap_or(terminal.min);
-                    let cell = pointer_to_cell(pointer, terminal, &self.terminal);
+                    let cell = pointer_to_cell(pointer, terminal, &self.terminal, cell_width(&ctx));
                     for _ in 0..steps.unsigned_abs().min(20) {
                         let button = if steps > 0 { 64 } else { 65 };
                         if self.terminal.sgr_mouse {
@@ -381,6 +383,10 @@ impl eframe::App for RippleApp {
     }
 }
 
+fn cell_width(ctx: &egui::Context) -> f32 {
+    ctx.fonts_mut(|fonts| fonts.glyph_width(&FontId::monospace(TERMINAL_FONT_SIZE), 'M'))
+}
+
 fn to_color32(color: Rgb) -> Color32 {
     Color32::from_rgb(color.0, color.1, color.2)
 }
@@ -393,9 +399,14 @@ fn ordered_positions(first: CellPosition, second: CellPosition) -> (CellPosition
     }
 }
 
-fn pointer_to_cell(pointer: egui::Pos2, rect: egui::Rect, terminal: &TerminalGrid) -> CellPosition {
+fn pointer_to_cell(
+    pointer: egui::Pos2,
+    rect: egui::Rect,
+    terminal: &TerminalGrid,
+    width: f32,
+) -> CellPosition {
     let (columns, rows) = terminal.dimensions();
-    let column = ((pointer.x - rect.left() - 8.0) / CELL_WIDTH).floor() as isize;
+    let column = ((pointer.x - rect.left() - 8.0) / width).floor() as isize;
     let row = ((pointer.y - rect.top() - 8.0) / CELL_HEIGHT).floor() as isize;
     CellPosition {
         row: row.clamp(0, rows.saturating_sub(1) as isize) as usize,

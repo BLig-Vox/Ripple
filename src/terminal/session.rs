@@ -48,6 +48,7 @@ impl TerminalSession {
             command.cwd(PathBuf::from(home));
         }
         command.env("TERM", "xterm-256color");
+        command.env("COLORTERM", "truecolor");
         let mut reader = pair
             .master
             .try_clone_reader()

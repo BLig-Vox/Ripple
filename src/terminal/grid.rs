@@ -188,10 +188,11 @@ impl TerminalGrid {
             return;
         }
 
+        let blank = self.erase_cell();
         for row in &mut self.cells {
-            row.resize(columns, Cell::blank());
+            row.resize(columns, blank);
         }
-        self.cells.resize(rows, vec![Cell::blank(); columns]);
+        self.cells.resize(rows, vec![blank; columns]);
         self.columns = columns;
         self.rows = rows;
         self.cursor_column = self.cursor_column.min(columns - 1);
@@ -200,8 +201,17 @@ impl TerminalGrid {
         self.scroll_bottom = rows - 1;
     }
 
+    // Erase operations use the current background (xterm's BCE capability).
+    fn erase_cell(&self) -> Cell {
+        Cell {
+            character: ' ',
+            foreground: self.foreground,
+            background: self.background,
+        }
+    }
+
     fn blank_line(&self) -> Vec<Cell> {
-        vec![Cell::blank(); self.columns]
+        vec![self.erase_cell(); self.columns]
     }
 
     fn scroll_up(&mut self, count: usize) {
@@ -241,33 +251,35 @@ impl TerminalGrid {
     }
 
     fn erase_line(&mut self, start: usize, end: usize) {
+        let blank = self.erase_cell();
         let row = &mut self.cells[self.cursor_row];
         for cell in row
             .iter_mut()
             .take(end.min(self.columns))
             .skip(start.min(self.columns))
         {
-            *cell = Cell::blank();
+            *cell = blank;
         }
     }
 
     fn erase_display(&mut self, mode: u16) {
+        let blank = self.erase_cell();
         match mode {
             0 => {
                 self.erase_line(self.cursor_column, self.columns);
                 for row in self.cursor_row + 1..self.rows {
-                    self.cells[row].fill(Cell::blank());
+                    self.cells[row].fill(blank);
                 }
             }
             1 => {
                 for row in 0..self.cursor_row {
-                    self.cells[row].fill(Cell::blank());
+                    self.cells[row].fill(blank);
                 }
                 self.erase_line(0, self.cursor_column + 1);
             }
             2 | 3 => {
                 for row in &mut self.cells {
-                    row.fill(Cell::blank());
+                    row.fill(blank);
                 }
                 if mode == 3 {
                     self.scrollback.clear();
@@ -471,13 +483,14 @@ impl Perform for TerminalGrid {
             '@' | 'P' => {
                 let start = self.cursor_column.min(self.columns - 1);
                 let count = parameter(0, 1).min(self.columns - start);
+                let blank = self.erase_cell();
                 let line = &mut self.cells[self.cursor_row];
                 if action == '@' {
                     line.copy_within(start..self.columns - count, start + count);
-                    line[start..start + count].fill(Cell::blank());
+                    line[start..start + count].fill(blank);
                 } else {
                     line.copy_within(start + count..self.columns, start);
-                    line[self.columns - count..].fill(Cell::blank());
+                    line[self.columns - count..].fill(blank);
                 }
             }
             'n' if values.first() == Some(&6) => self.reply(
@@ -490,7 +503,23 @@ impl Perform for TerminalGrid {
             ),
             'n' if values.first() == Some(&5) => self.reply(b"\x1b[0n"),
             'c' => self.reply(b"\x1b[?1;2c"),
-            'm' => self.set_sgr(&values),
+            'm' => {
+                let mut sgr = Vec::new();
+                for param in params.iter() {
+                    if matches!(param.first(), Some(38 | 48)) && param.len() > 1 {
+                        // ISO 8613-6: 38:2:[colorspace]:r:g:b, also 38:2:r:g:b.
+                        if param.get(1) == Some(&2) && param.len() >= 5 {
+                            sgr.extend_from_slice(&param[..2]);
+                            sgr.extend_from_slice(&param[param.len() - 3..]);
+                        } else if param.get(1) == Some(&5) && param.len() == 3 {
+                            sgr.extend_from_slice(param);
+                        }
+                    } else {
+                        sgr.push(param.first().copied().unwrap_or(0));
+                    }
+                }
+                self.set_sgr(&sgr);
+            }
             _ => {}
         }
     }
