@@ -22,6 +22,7 @@ pub struct TerminalSession {
     output: Receiver<Vec<u8>>,
     columns: u16,
     rows: u16,
+    cell_pixels: (usize, usize),
     stop: Arc<AtomicBool>,
     reader_thread: Option<thread::JoinHandle<()>>,
 }
@@ -134,6 +135,7 @@ impl TerminalSession {
             reader_thread: Some(reader_thread),
             columns,
             rows,
+            cell_pixels: (0, 0),
         })
     }
 
@@ -141,22 +143,32 @@ impl TerminalSession {
         self.writer.write_all(bytes)
     }
 
-    pub fn resize(&mut self, columns: usize, rows: usize) -> Result<(), String> {
+    pub fn resize(
+        &mut self,
+        columns: usize,
+        rows: usize,
+        cell_width: usize,
+        cell_height: usize,
+    ) -> Result<(), String> {
         let columns = columns.clamp(1, u16::MAX as usize) as u16;
         let rows = rows.clamp(1, u16::MAX as usize) as u16;
-        if columns == self.columns && rows == self.rows {
+        if columns == self.columns
+            && rows == self.rows
+            && self.cell_pixels == (cell_width, cell_height)
+        {
             return Ok(());
         }
         self.master
             .resize(PtySize {
                 rows,
                 cols: columns,
-                pixel_width: 0,
-                pixel_height: 0,
+                pixel_width: (columns as usize * cell_width).min(u16::MAX as usize) as u16,
+                pixel_height: (rows as usize * cell_height).min(u16::MAX as usize) as u16,
             })
             .map_err(|error| format!("Could not resize the PTY: {error}"))?;
         self.columns = columns;
         self.rows = rows;
+        self.cell_pixels = (cell_width, cell_height);
         Ok(())
     }
 

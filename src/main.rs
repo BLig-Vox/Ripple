@@ -1,6 +1,7 @@
 mod app;
 mod clipboard;
 mod keyboard;
+mod links;
 mod terminal;
 mod window_chrome;
 mod window_geometry;

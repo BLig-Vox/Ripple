@@ -6,12 +6,12 @@ A Rust terminal emulator with a GPU-rendered interface and a simple workflow.
 
 ## Download
 
-Get the Linux x86_64 build from [GitHub Releases](https://github.com/BLig-Vox/Ripple/releases). Version 0.1.3 is an early prerelease. The binary is built on Ubuntu 24.04 and requires glibc 2.39 or newer, an X11 or Wayland desktop, and a working Vulkan or EGL/OpenGL graphics driver. Other Linux distributions have not been verified.
+Get the Linux x86_64 build from [GitHub Releases](https://github.com/BLig-Vox/Ripple/releases). Version 0.1.4 is an early prerelease. The binary is built on Ubuntu 24.04 and requires glibc 2.39 or newer, an X11 or Wayland desktop, and a working Vulkan or EGL/OpenGL graphics driver. Other Linux distributions have not been verified.
 
 ```sh
 sha256sum -c SHA256SUMS
-tar -xzf ripple-v0.1.3-linux-x86_64.tar.gz
-cd ripple-v0.1.3-linux-x86_64
+tar -xzf ripple-v0.1.4-linux-x86_64.tar.gz
+cd ripple-v0.1.4-linux-x86_64
 ./ripple
 ```
 
@@ -27,7 +27,7 @@ For application menu and desktop integration, use the source installer below.
 
 The first Linux prototype uses `eframe` with its wgpu renderer and a custom wgpu pass for cell backgrounds and the cursor. It launches the default shell through a PTY, parses a starter ANSI/VT subset, and provides bounded scrollback, drag selection, and clipboard shortcuts. It opens at 80% of the active monitor's dimensions and centers itself on that monitor.
 
-This is an early prototype, not yet a feature-complete terminal. Current limitations include single-window operation, incomplete VT compatibility, no shaped GPU glyph atlas, and no advanced terminal graphics protocols.
+This is an early prototype, not yet a feature-complete terminal. Current limitations include single-window operation, incomplete VT compatibility, no shaped GPU glyph atlas, and partial terminal graphics support.
 
 ## Arch Linux packaging
 
@@ -50,14 +50,14 @@ set -eu
 
 # 1. Install the terminal.
 ripple_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-cargo install vox-ripple --version 0.1.3 --locked --root "$ripple_cargo_home"
+cargo install vox-ripple --version 0.1.4 --locked --root "$ripple_cargo_home"
 ripple_data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
 ripple_desktop_dir="$(xdg-user-dir DESKTOP 2>/dev/null || printf '%s/Desktop' "$HOME")"
 ripple_tmp="$(mktemp -d)"
 trap 'rm -rf -- "$ripple_tmp"' EXIT
 
 # 2. Install the logo and launchers without rebuilding Ripple.
-curl -fL https://raw.githubusercontent.com/BLig-Vox/Ripple/v0.1.3/assets/branding/ripple-logo.png \
+curl -fL https://raw.githubusercontent.com/BLig-Vox/Ripple/v0.1.4/assets/branding/ripple-logo.png \
   -o "$ripple_tmp/ripple.png"
 install -Dm644 "$ripple_tmp/ripple.png" "$ripple_data_home/pixmaps/ripple.png"
 
@@ -115,7 +115,7 @@ remove existing project `target` directories or a custom `CARGO_TARGET_DIR`.
 For installation directly from the existing GitHub release:
 
 ```sh
-cargo install --git https://github.com/BLig-Vox/Ripple --tag v0.1.3 --locked --bin ripple
+cargo install --git https://github.com/BLig-Vox/Ripple --tag v0.1.4 --locked --bin ripple
 ```
 
 ## Build and run
@@ -172,3 +172,26 @@ Ripple recognizes the alternate-screen sequences used by Neovim (`?1049h` / `?10
 ## License
 
 Ripple is licensed under the [MIT License](LICENSE.md).
+
+## Images and links
+
+Ripple supports **Sixel bitmap images**. Recent Chafa versions with terminal
+probing can select Sixel after querying Ripple. For older Chafa (including
+Ubuntu 24.04's 1.14), select the format explicitly:
+
+```sh
+chafa -f sixels image.png
+```
+
+Images scroll with terminal output. Erasing/overwriting a covered area discards
+the affected image; shrinking the terminal discards images crossing removed
+rows/columns. Alternate screens have separate images. Input is limited to 4 MiB,
+each image to 2048×2048 pixels, and retained images to 32 images/32 MiB per screen.
+Only 7-bit Sixel is implemented; Kitty/iTerm graphics, shared palette updates and
+non-square pixel aspect scaling are not implemented.
+
+**Ctrl + right-click** an OSC 8 hyperlink or a visible `http://` / `https://` URL
+to open it in the system's default browser. Hold Ctrl to see the link cursor.
+Only HTTP/HTTPS is allowed; text is passed as an argument to `gio open` or
+`xdg-open`, never a shell. Plain URL detection requires a complete URL within
+one terminal row; OSC 8 links also work across wrapped labels.

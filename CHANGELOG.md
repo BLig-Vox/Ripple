@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+- Render Chafa Sixel bitmap images with bounded decoding, scrollback retention and visible GPU texture caching.
+- Report Sixel capability and terminal pixel geometry for compatible image tools.
+- Open OSC 8 links and visible HTTP/HTTPS URLs with Ctrl + right-click.
+- Bound OSC payloads, link storage and the desktop URL opener queue.
+
 ## 0.1.3
 
 - Add a compact GTK-style title bar with Lucide minimize, maximize/restore and close icons, native window dragging and resize edges.

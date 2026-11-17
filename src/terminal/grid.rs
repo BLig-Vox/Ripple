@@ -1,6 +1,11 @@
 use std::collections::VecDeque;
 
+use super::graphics::{self, Graphic, SixelInput};
 use crate::keyboard::KeyboardMode;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use vte::{Params, Perform};
 
 const DEFAULT_FOREGROUND: Rgb = Rgb(216, 216, 216);
@@ -18,6 +23,7 @@ pub struct Cell {
     pub character: char,
     pub foreground: Rgb,
     pub background: Rgb,
+    pub link: u32,
 }
 
 impl Cell {
@@ -26,11 +32,14 @@ impl Cell {
             character: ' ',
             foreground: DEFAULT_FOREGROUND,
             background: DEFAULT_BACKGROUND,
+            link: 0,
         }
     }
 }
 
 struct SavedScreen {
+    images: VecDeque<Graphic>,
+    link: u32,
     cells: Vec<Vec<Cell>>,
     cursor: (usize, usize),
     foreground: Rgb,
@@ -49,7 +58,17 @@ pub struct TerminalGrid {
     pub cells: Vec<Vec<Cell>>,
     scrollback: VecDeque<Vec<Cell>>,
     scrollback_bytes: usize,
-    pub parser: vte::Parser,
+    pub parser: vte::Parser<4096>,
+    pub images: VecDeque<Graphic>,
+    cell_pixels: (usize, usize),
+    image_id: u64,
+    sixel: Option<SixelInput>,
+    pending_sixel: Option<SixelInput>,
+    sixel_scroll: bool,
+    sixel_right: bool,
+    links: HashMap<u32, Arc<str>>,
+    current_link: u32,
+    link_id: u32,
     primary_screen: Option<SavedScreen>,
     scroll_top: usize,
     scroll_bottom: usize,
@@ -80,7 +99,17 @@ impl TerminalGrid {
             cells: vec![vec![Cell::blank(); columns]; rows],
             scrollback: VecDeque::new(),
             scrollback_bytes: 0,
-            parser: vte::Parser::new(),
+            parser: vte::Parser::<4096>::new_with_size(),
+            images: VecDeque::new(),
+            cell_pixels: (9, 19),
+            image_id: 0,
+            sixel: None,
+            pending_sixel: None,
+            sixel_scroll: true,
+            sixel_right: false,
+            links: HashMap::new(),
+            current_link: 0,
+            link_id: 0,
             primary_screen: None,
             scroll_top: 0,
             scroll_bottom: rows - 1,
@@ -149,6 +178,8 @@ impl TerminalGrid {
             self.alternate_keyboard = KeyboardMode::default();
             let empty = vec![self.blank_line(); self.rows];
             self.primary_screen = Some(SavedScreen {
+                images: std::mem::take(&mut self.images),
+                link: self.current_link,
                 cells: std::mem::replace(&mut self.cells, empty),
                 cursor: (self.cursor_column, self.cursor_row),
                 foreground: self.foreground,
@@ -156,6 +187,7 @@ impl TerminalGrid {
                 scroll_top: self.scroll_top,
                 scroll_bottom: self.scroll_bottom,
             });
+            self.current_link = 0;
             self.cursor_column = 0;
             self.cursor_row = 0;
             self.scroll_top = 0;
@@ -167,6 +199,12 @@ impl TerminalGrid {
                     line.resize(self.columns, Cell::blank());
                 }
                 primary.cells.resize(self.rows, self.blank_line());
+                primary.images.retain(|image| {
+                    image.row + image.rows as i32 <= self.rows as i32
+                        && image.column + image.columns <= self.columns
+                });
+                self.images = primary.images;
+                self.current_link = primary.link;
                 self.cells = primary.cells;
                 self.cursor_column = primary.cursor.0.min(self.columns - 1);
                 self.cursor_row = primary.cursor.1.min(self.rows - 1);
@@ -198,8 +236,137 @@ impl TerminalGrid {
         }
     }
 
+    pub fn set_cell_pixels(&mut self, width: usize, height: usize) {
+        self.cell_pixels = (width.clamp(1, 256), height.clamp(1, 256));
+    }
+
+    fn erase_images(&mut self, top: i32, bottom: i32, left: usize, right: usize) {
+        self.images
+            .retain(|image| !image.overlaps(top, bottom, left, right));
+    }
+
+    fn finish_sixel(&mut self) {
+        let Some(input) = self.pending_sixel.take() else {
+            return;
+        };
+        let Rgb(r, g, b) = self.background;
+        let Some(bitmap) = graphics::decode(input, [r, g, b, 255]) else {
+            return;
+        };
+        let rows = bitmap.height.div_ceil(self.cell_pixels.1);
+        let columns = bitmap.width.div_ceil(self.cell_pixels.0);
+        let (column, row) = if self.sixel_scroll {
+            (self.cursor_column.min(self.columns - 1), self.cursor_row)
+        } else {
+            (0, 0)
+        };
+        self.erase_images(row as i32, (row + rows) as i32, column, column + columns);
+        let blank = self.erase_cell();
+        for line in self.cells.iter_mut().skip(row).take(rows) {
+            for cell in line.iter_mut().skip(column).take(columns) {
+                *cell = blank;
+            }
+        }
+        while self.images.len() >= graphics::IMAGE_COUNT
+            || self.images.iter().map(|i| i.pixels.len()).sum::<usize>() + bitmap.pixels.len()
+                > graphics::IMAGE_BYTES
+        {
+            if self.images.pop_front().is_none() {
+                return;
+            }
+        }
+        self.image_id = self.image_id.wrapping_add(1);
+        self.images.push_back(Graphic {
+            id: self.image_id,
+            row: row as i32,
+            column,
+            width: bitmap.width,
+            height: bitmap.height,
+            rows,
+            columns,
+            pixels: bitmap.pixels.into(),
+        });
+        if self.sixel_scroll {
+            if self.sixel_right {
+                self.cursor_column = (column + columns).min(self.columns - 1);
+            } else {
+                for _ in 0..rows {
+                    self.line_feed();
+                }
+                self.cursor_column = column;
+            }
+        }
+    }
+
+    pub fn link_at(&self, row: usize, column: usize, offset: usize) -> Option<String> {
+        let line = self.visible_line(row, offset);
+        let column = column.min(line.len().saturating_sub(1));
+        if let Some(link) = self.links.get(&line.get(column)?.link) {
+            return Some(link.to_string());
+        }
+        let mut start = column;
+        let mut end = column + 1;
+        while start > 0 && !line[start - 1].character.is_whitespace() {
+            start -= 1;
+        }
+        while end < line.len() && !line[end].character.is_whitespace() {
+            end += 1;
+        }
+        // Without soft-wrap metadata, do not open a possibly truncated URL.
+        if end == line.len() {
+            return None;
+        }
+        let text: String = line[start..end].iter().map(|cell| cell.character).collect();
+        let mut text = text
+            .trim_start_matches(['(', '[', '{', '<', '\'', '"'])
+            .trim_end_matches(['.', ',', ';', '!', '?', '>', '\'', '"'])
+            .to_string();
+        for (open, close) in [('(', ')'), ('[', ']'), ('{', '}')] {
+            while text.ends_with(close)
+                && text.chars().filter(|c| *c == close).count()
+                    > text.chars().filter(|c| *c == open).count()
+            {
+                text.pop();
+            }
+        }
+        crate::links::safe_url(&text).then_some(text)
+    }
+
+    fn set_link(&mut self, url: &str) {
+        self.current_link = 0;
+        if !crate::links::safe_url(url) {
+            return;
+        }
+        if let Some((&id, _)) = self.links.iter().find(|(_, old)| old.as_ref() == url) {
+            self.current_link = id;
+            return;
+        }
+        if self.links.len() >= 1024 {
+            let mut used = HashSet::new();
+            for line in self.cells.iter().chain(self.scrollback.iter()) {
+                used.extend(line.iter().map(|cell| cell.link));
+            }
+            if let Some(primary) = &self.primary_screen {
+                used.insert(primary.link);
+                for line in &primary.cells {
+                    used.extend(line.iter().map(|cell| cell.link));
+                }
+            }
+            self.links.retain(|id, _| used.contains(id));
+        }
+        if self.links.len() >= 1024 {
+            return;
+        }
+        self.link_id = self.link_id.wrapping_add(1).max(1);
+        while self.links.contains_key(&self.link_id) {
+            self.link_id = self.link_id.wrapping_add(1).max(1);
+        }
+        self.current_link = self.link_id;
+        self.links.insert(self.link_id, Arc::from(url));
+    }
+
     pub fn feed(&mut self, bytes: &[u8]) {
-        let mut parser = std::mem::replace(&mut self.parser, vte::Parser::new());
+        let mut parser = std::mem::replace(&mut self.parser, vte::Parser::<4096>::new_with_size());
         parser.advance(self, bytes);
         self.parser = parser;
     }
@@ -211,6 +378,15 @@ impl TerminalGrid {
             return;
         }
 
+        self.images.retain(|image| {
+            image.row + image.rows as i32 <= rows as i32 && image.column + image.columns <= columns
+        });
+        if let Some(primary) = &mut self.primary_screen {
+            primary.images.retain(|image| {
+                image.row + image.rows as i32 <= rows as i32
+                    && image.column + image.columns <= columns
+            });
+        }
         let blank = self.erase_cell();
         for row in &mut self.cells {
             row.resize(columns, blank);
@@ -230,6 +406,7 @@ impl TerminalGrid {
             character: ' ',
             foreground: self.foreground,
             background: self.background,
+            link: 0,
         }
     }
 
@@ -255,6 +432,21 @@ impl TerminalGrid {
                 }
             }
             self.cells.insert(self.scroll_bottom, self.blank_line());
+            if self.scroll_top == 0 && self.scroll_bottom == self.rows - 1 {
+                for image in &mut self.images {
+                    image.row -= 1;
+                }
+                let oldest = -(self.scrollback_len() as i32);
+                self.images
+                    .retain(|image| image.row + image.rows as i32 > oldest);
+            } else {
+                self.erase_images(
+                    self.scroll_top as i32,
+                    self.scroll_bottom as i32 + 1,
+                    0,
+                    self.columns,
+                );
+            }
         }
     }
 
@@ -262,6 +454,23 @@ impl TerminalGrid {
         for _ in 0..count.min(self.scroll_bottom - self.scroll_top + 1) {
             self.cells.remove(self.scroll_bottom);
             self.cells.insert(self.scroll_top, self.blank_line());
+            if self.scroll_top == 0 && self.scroll_bottom == self.rows - 1 {
+                self.images
+                    .retain(|image| !(image.row < 0 && image.row + image.rows as i32 > 0));
+                for image in &mut self.images {
+                    if image.row >= 0 {
+                        image.row += 1;
+                    }
+                }
+                self.images.retain(|image| image.row < self.rows as i32);
+            } else {
+                self.erase_images(
+                    self.scroll_top as i32,
+                    self.scroll_bottom as i32 + 1,
+                    0,
+                    self.columns,
+                );
+            }
         }
     }
 
@@ -274,6 +483,12 @@ impl TerminalGrid {
     }
 
     fn erase_line(&mut self, start: usize, end: usize) {
+        self.erase_images(
+            self.cursor_row as i32,
+            self.cursor_row as i32 + 1,
+            start,
+            end,
+        );
         let blank = self.erase_cell();
         let row = &mut self.cells[self.cursor_row];
         for cell in row
@@ -286,6 +501,18 @@ impl TerminalGrid {
     }
 
     fn erase_display(&mut self, mode: u16) {
+        match mode {
+            0 => self.erase_images(
+                self.cursor_row as i32 + 1,
+                self.rows as i32,
+                0,
+                self.columns,
+            ),
+            1 => self.erase_images(0, self.cursor_row as i32, 0, self.columns),
+            2 => self.erase_images(0, self.rows as i32, 0, self.columns),
+            3 => self.images.clear(),
+            _ => {}
+        }
         let blank = self.erase_cell();
         match mode {
             0 => {
@@ -370,7 +597,14 @@ impl TerminalGrid {
                 self.cursor_column = self.columns - 1;
             }
         }
+        self.erase_images(
+            self.cursor_row as i32,
+            self.cursor_row as i32 + 1,
+            self.cursor_column,
+            self.cursor_column + 1,
+        );
         self.cells[self.cursor_row][self.cursor_column] = Cell {
+            link: self.current_link,
             character,
             foreground: if self.inverse {
                 self.background
@@ -388,12 +622,54 @@ impl TerminalGrid {
 }
 
 impl Perform for TerminalGrid {
+    fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char) {
+        self.pending_sixel = None;
+        self.sixel = if !ignore && intermediates.is_empty() && action == 'q' {
+            let transparent = params.iter().nth(1).and_then(|p| p.first()).copied() == Some(1);
+            Some(SixelInput {
+                bytes: Vec::new(),
+                transparent,
+                rejected: false,
+            })
+        } else {
+            None
+        };
+    }
+    fn put(&mut self, byte: u8) {
+        if let Some(input) = &mut self.sixel {
+            input.put(byte);
+        }
+    }
+    fn unhook(&mut self) {
+        self.pending_sixel = self.sixel.take();
+    }
+    fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
+        self.pending_sixel = None;
+        if params.first() != Some(&b"8".as_slice()) || params.len() < 3 {
+            return;
+        }
+        self.current_link = 0;
+        let length = params[2..].iter().map(|p| p.len()).sum::<usize>() + params.len() - 3;
+        if length > 2048 {
+            return;
+        }
+        let bytes = params[2..].join(&b';');
+        if let Ok(url) = std::str::from_utf8(&bytes) {
+            self.set_link(url);
+        }
+    }
+
     fn print(&mut self, character: char) {
+        self.pending_sixel = None;
         self.write_character(character);
     }
 
     fn execute(&mut self, byte: u8) {
         match byte {
+            0x18 | 0x1a => {
+                self.sixel = None;
+                self.pending_sixel = None;
+            }
             b'\n' | 0x0b | 0x0c => self.line_feed(),
             b'\r' => self.cursor_column = 0,
             b'\x08' => self.cursor_column = self.cursor_column.saturating_sub(1),
@@ -406,6 +682,7 @@ impl Perform for TerminalGrid {
     }
 
     fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char) {
+        self.pending_sixel = None;
         if ignore {
             return;
         }
@@ -445,6 +722,8 @@ impl Perform for TerminalGrid {
                     1000 | 1002 | 1003 => self.mouse_tracking = enabled,
                     1006 => self.sgr_mouse = enabled,
                     2004 => self.bracketed_paste = enabled,
+                    80 => self.sixel_scroll = !enabled,
+                    8452 => self.sixel_right = enabled,
                     _ => {}
                 }
             }
@@ -520,6 +799,12 @@ impl Perform for TerminalGrid {
                 let start = self.cursor_column.min(self.columns - 1);
                 let count = parameter(0, 1).min(self.columns - start);
                 let blank = self.erase_cell();
+                self.erase_images(
+                    self.cursor_row as i32,
+                    self.cursor_row as i32 + 1,
+                    start,
+                    self.columns,
+                );
                 let line = &mut self.cells[self.cursor_row];
                 if action == '@' {
                     line.copy_within(start..self.columns - count, start + count);
@@ -538,7 +823,22 @@ impl Perform for TerminalGrid {
                 .as_bytes(),
             ),
             'n' if values.first() == Some(&5) => self.reply(b"\x1b[0n"),
-            'c' => self.reply(b"\x1b[?1;2c"),
+            'c' if values.first().copied().unwrap_or(0) == 0 => self.reply(b"\x1b[?62;4c"),
+            't' => match values.first().copied().unwrap_or(0) {
+                14 => self.reply(
+                    format!(
+                        "\x1b[4;{};{}t",
+                        self.rows * self.cell_pixels.1,
+                        self.columns * self.cell_pixels.0
+                    )
+                    .as_bytes(),
+                ),
+                16 => self.reply(
+                    format!("\x1b[6;{};{}t", self.cell_pixels.1, self.cell_pixels.0).as_bytes(),
+                ),
+                18 => self.reply(format!("\x1b[8;{};{}t", self.rows, self.columns).as_bytes()),
+                _ => {}
+            },
             'm' => {
                 let mut sgr = Vec::new();
                 for param in params.iter() {
@@ -561,11 +861,23 @@ impl Perform for TerminalGrid {
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
+        if intermediates.is_empty() && byte == b'\\' {
+            self.finish_sixel();
+            return;
+        }
+        self.pending_sixel = None;
         if !intermediates.is_empty() {
             return;
         }
         match byte {
             b'c' => {
+                self.images.clear();
+                if let Some(primary) = &mut self.primary_screen {
+                    primary.images.clear();
+                }
+                self.current_link = 0;
+                self.sixel_scroll = true;
+                self.sixel_right = false;
                 self.primary_keyboard = KeyboardMode::default();
                 self.alternate_keyboard = KeyboardMode::default();
             }

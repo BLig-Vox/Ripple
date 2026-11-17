@@ -28,6 +28,8 @@ pub struct RippleApp {
     scroll_offset: usize,
     wheel_remainder: f32,
     clipboard_paste: ClipboardPaste,
+    image_textures: std::collections::HashMap<u64, egui::TextureHandle>,
+    link_opener: crate::links::LinkOpener,
 }
 
 impl RippleApp {
@@ -68,6 +70,8 @@ impl RippleApp {
             scroll_offset: 0,
             wheel_remainder: 0.0,
             clipboard_paste: ClipboardPaste::default(),
+            image_textures: std::collections::HashMap::new(),
+            link_opener: crate::links::LinkOpener::new(),
         }
     }
 
@@ -212,19 +216,24 @@ impl RippleApp {
     }
 
     fn update_terminal_size(&mut self, ctx: &egui::Context, available: Vec2) {
+        let scale = ctx.pixels_per_point();
+        let pixel_width = (cell_width(ctx) * scale).round().max(1.0) as usize;
+        let pixel_height = (CELL_HEIGHT * scale).round().max(1.0) as usize;
+        self.terminal.set_cell_pixels(pixel_width, pixel_height);
         let columns = ((available.x - 16.0) / cell_width(ctx)).floor().max(1.0) as usize;
         let rows = ((available.y - 16.0) / CELL_HEIGHT).floor().max(1.0) as usize;
-        if self.terminal.dimensions() == (columns, rows) {
-            return;
-        }
+        let dimensions_changed = self.terminal.dimensions() != (columns.min(512), rows.min(256));
         self.terminal.resize(columns, rows);
         let (columns, rows) = self.terminal.dimensions();
-        self.selection = None;
         if let Some(session) = &mut self.session {
-            if let Err(error) = session.resize(columns, rows) {
+            if let Err(error) = session.resize(columns, rows, pixel_width, pixel_height) {
                 self.error = Some(error);
             }
         }
+        if !dimensions_changed {
+            return;
+        }
+        self.selection = None;
         ctx.request_repaint();
     }
 
@@ -245,7 +254,7 @@ impl RippleApp {
         }
     }
 
-    fn draw_terminal(&self, ui: &mut egui::Ui, rect: egui::Rect) {
+    fn draw_terminal(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, Color32::from_rgb(24, 24, 24));
         let origin = Vec2::splat(8.0);
@@ -260,6 +269,47 @@ impl RippleApp {
                 self.selection
                     .map(|(start, end)| ((start.row, start.column), (end.row, end.column))),
             ));
+        }
+        let visible: std::collections::HashSet<u64> = self
+            .terminal
+            .images
+            .iter()
+            .filter(|image| {
+                let row = image.row + self.scroll_offset as i32;
+                row < self.terminal.dimensions().1 as i32 && row + image.rows as i32 > 0
+            })
+            .map(|image| image.id)
+            .collect();
+        self.image_textures.retain(|id, _| visible.contains(id));
+        for image in &self.terminal.images {
+            if !visible.contains(&image.id) {
+                continue;
+            }
+            let texture = self.image_textures.entry(image.id).or_insert_with(|| {
+                ui.ctx().load_texture(
+                    format!("sixel-{}", image.id),
+                    egui::ColorImage::from_rgba_unmultiplied(
+                        [image.width, image.height],
+                        &image.pixels,
+                    ),
+                    egui::TextureOptions::LINEAR,
+                )
+            });
+            let row = image.row + self.scroll_offset as i32;
+            let position = rect.min
+                + origin
+                + Vec2::new(
+                    image.column as f32 * cell_width(ui.ctx()),
+                    row as f32 * CELL_HEIGHT,
+                );
+            let size =
+                Vec2::new(image.width as f32, image.height as f32) / ui.ctx().pixels_per_point();
+            painter.image(
+                texture.id(),
+                egui::Rect::from_min_size(position, size),
+                egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
         }
         let font = FontId::monospace(TERMINAL_FONT_SIZE);
 
@@ -318,6 +368,22 @@ impl eframe::App for RippleApp {
         let response = ui.allocate_rect(terminal, egui::Sense::click_and_drag());
         if response.clicked() || !response.has_focus() {
             response.request_focus();
+        }
+        if ctx.input(|i| i.modifiers.ctrl) {
+            if let Some(pointer) = response.hover_pos() {
+                let point = pointer_to_cell(pointer, terminal, &self.terminal, cell_width(&ctx));
+                if let Some(url) =
+                    self.terminal
+                        .link_at(point.row, point.column, self.scroll_offset)
+                {
+                    ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                    if response.secondary_clicked() {
+                        if let Err(error) = self.link_opener.open(url) {
+                            self.error = Some(error.into());
+                        }
+                    }
+                }
+            }
         }
         if response.drag_started_by(egui::PointerButton::Primary) {
             if let Some(pointer) = response.interact_pointer_pos() {

@@ -1,3 +1,4 @@
+mod graphics;
 mod grid;
 mod renderer;
 mod session;
