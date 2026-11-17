@@ -1,17 +1,19 @@
 # Ripple
 
+<p align="center"><img src="assets/branding/ripple-logo.png" width="128" alt="Ripple logo"></p>
+
 A Rust terminal emulator with a GPU-rendered interface and a simple workflow.
 
 ![Ripple running on Linux](assets/screenshots/ripple-linux.png)
 
 ## Download
 
-Get the Linux x86_64 build from [GitHub Releases](https://github.com/BLig-Vox/Ripple/releases). Version 0.1.4 is an early prerelease. The binary is built on Ubuntu 24.04 and requires glibc 2.39 or newer, an X11 or Wayland desktop, and a working Vulkan or EGL/OpenGL graphics driver. Other Linux distributions have not been verified.
+Get the Linux x86_64 build from [GitHub Releases](https://github.com/BLig-Vox/Ripple/releases). Version 0.1.5 is an early prerelease. The binary is built on Ubuntu 24.04 and requires glibc 2.39 or newer, an X11 or Wayland desktop, and a working Vulkan or EGL/OpenGL graphics driver. Other Linux distributions have not been verified.
 
 ```sh
 sha256sum -c SHA256SUMS
-tar -xzf ripple-v0.1.4-linux-x86_64.tar.gz
-cd ripple-v0.1.4-linux-x86_64
+tar -xzf ripple-v0.1.5-linux-x86_64.tar.gz
+cd ripple-v0.1.5-linux-x86_64
 ./ripple
 ```
 
@@ -50,14 +52,14 @@ set -eu
 
 # 1. Install the terminal.
 ripple_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
-cargo install vox-ripple --version 0.1.4 --locked --root "$ripple_cargo_home"
+cargo install vox-ripple --version 0.1.5 --locked --root "$ripple_cargo_home"
 ripple_data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
 ripple_desktop_dir="$(xdg-user-dir DESKTOP 2>/dev/null || printf '%s/Desktop' "$HOME")"
 ripple_tmp="$(mktemp -d)"
 trap 'rm -rf -- "$ripple_tmp"' EXIT
 
 # 2. Install the logo and launchers without rebuilding Ripple.
-curl -fL https://raw.githubusercontent.com/BLig-Vox/Ripple/v0.1.4/assets/branding/ripple-logo.png \
+curl -fL https://raw.githubusercontent.com/BLig-Vox/Ripple/v0.1.5/assets/branding/ripple-logo.png \
   -o "$ripple_tmp/ripple.png"
 install -Dm644 "$ripple_tmp/ripple.png" "$ripple_data_home/pixmaps/ripple.png"
 
@@ -115,7 +117,7 @@ remove existing project `target` directories or a custom `CARGO_TARGET_DIR`.
 For installation directly from the existing GitHub release:
 
 ```sh
-cargo install --git https://github.com/BLig-Vox/Ripple --tag v0.1.4 --locked --bin ripple
+cargo install --git https://github.com/BLig-Vox/Ripple --tag v0.1.5 --locked --bin ripple
 ```
 
 ## Build and run

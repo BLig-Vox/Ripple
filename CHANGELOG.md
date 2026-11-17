@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- Replace the bundled application and desktop logo with the flat golden ripple emblem.
+- Branding-only release; terminal behavior is unchanged.
+
 ## 0.1.4
 
 - Render Chafa Sixel bitmap images with bounded decoding, scrollback retention and visible GPU texture caching.
