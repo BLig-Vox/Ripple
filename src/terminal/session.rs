@@ -49,6 +49,8 @@ impl TerminalSession {
         }
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
+        command.env("TERM_PROGRAM", "ripple");
+        command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
         let mut reader = pair
             .master
             .try_clone_reader()

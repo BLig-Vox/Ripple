@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use crate::keyboard::KeyboardMode;
 use vte::{Params, Perform};
 
 const DEFAULT_FOREGROUND: Rgb = Rgb(216, 216, 216);
@@ -61,6 +62,8 @@ pub struct TerminalGrid {
     auto_wrap: bool,
     inverse: bool,
     replies: Vec<u8>,
+    primary_keyboard: KeyboardMode,
+    alternate_keyboard: KeyboardMode,
 }
 
 impl TerminalGrid {
@@ -90,6 +93,8 @@ impl TerminalGrid {
             auto_wrap: true,
             inverse: false,
             replies: Vec::new(),
+            primary_keyboard: KeyboardMode::default(),
+            alternate_keyboard: KeyboardMode::default(),
         }
     }
 
@@ -113,6 +118,22 @@ impl TerminalGrid {
         self.primary_screen.is_some()
     }
 
+    pub fn keyboard_flags(&self) -> u8 {
+        if self.alternate_screen_active() {
+            self.alternate_keyboard.flags()
+        } else {
+            self.primary_keyboard.flags()
+        }
+    }
+
+    fn keyboard_mode_mut(&mut self) -> &mut KeyboardMode {
+        if self.alternate_screen_active() {
+            &mut self.alternate_keyboard
+        } else {
+            &mut self.primary_keyboard
+        }
+    }
+
     pub fn take_replies(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.replies)
     }
@@ -125,6 +146,7 @@ impl TerminalGrid {
 
     fn switch_alternate_screen(&mut self, enabled: bool) {
         if enabled && self.primary_screen.is_none() {
+            self.alternate_keyboard = KeyboardMode::default();
             let empty = vec![self.blank_line(); self.rows];
             self.primary_screen = Some(SavedScreen {
                 cells: std::mem::replace(&mut self.cells, empty),
@@ -139,6 +161,7 @@ impl TerminalGrid {
             self.scroll_top = 0;
             self.scroll_bottom = self.rows - 1;
         } else if !enabled {
+            self.alternate_keyboard = KeyboardMode::default();
             if let Some(mut primary) = self.primary_screen.take() {
                 for line in &mut primary.cells {
                     line.resize(self.columns, Cell::blank());
@@ -390,6 +413,19 @@ impl Perform for TerminalGrid {
             .iter()
             .map(|param| param.first().copied().unwrap_or(0))
             .collect();
+        if action == 'u' {
+            let flags = values.first().copied().unwrap_or(0);
+            match intermediates {
+                b"?" => self.reply(format!("\x1b[?{}u", self.keyboard_flags()).as_bytes()),
+                b">" => self.keyboard_mode_mut().push(flags),
+                b"<" => self.keyboard_mode_mut().pop(flags),
+                b"=" => self
+                    .keyboard_mode_mut()
+                    .set(flags, values.get(1).copied().unwrap_or(1)),
+                _ => {}
+            }
+            return;
+        }
         if intermediates == b"?" && matches!(action, 'h' | 'l') {
             let enabled = action == 'h';
             for &mode in &values {
@@ -529,6 +565,10 @@ impl Perform for TerminalGrid {
             return;
         }
         match byte {
+            b'c' => {
+                self.primary_keyboard = KeyboardMode::default();
+                self.alternate_keyboard = KeyboardMode::default();
+            }
             b'D' => self.line_feed(),
             b'E' => {
                 self.cursor_column = 0;

@@ -2,8 +2,9 @@ use eframe::egui::{self, Color32, FontId, Key, Stroke, Vec2};
 
 use crate::{
     clipboard::ClipboardPaste,
+    keyboard,
     terminal::{Rgb, TerminalGpuRenderer, TerminalGrid, TerminalSession, gpu_cell_paint_callback},
-    window_geometry,
+    window_chrome, window_geometry,
 };
 
 const INITIAL_COLUMNS: usize = 100;
@@ -32,6 +33,7 @@ pub struct RippleApp {
 impl RippleApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         window_geometry::apply_initial_geometry(cc);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         let mut fonts = egui::FontDefinitions::default();
         fonts.font_data.insert(
             "ripple-mono".into(),
@@ -110,44 +112,44 @@ impl RippleApp {
 
     fn handle_keyboard(&mut self, ctx: &egui::Context) {
         let events = ctx.input(|input| input.events.clone());
+        let mut suppress_text = false;
         for event in events {
             match event {
                 egui::Event::Text(text) => {
+                    if suppress_text {
+                        suppress_text = false;
+                        continue;
+                    }
                     if !text.is_empty() {
                         self.send_input(text.as_bytes());
                     }
                 }
-                egui::Event::Paste(text) => self.paste_text(&text),
+                egui::Event::Paste(text) => {
+                    suppress_text = false;
+                    self.paste_text(&text);
+                }
                 egui::Event::Key {
                     key,
                     pressed: true,
                     modifiers,
                     ..
                 } => {
-                    if modifiers.ctrl || modifiers.command {
-                        if modifiers.shift && key == Key::C {
-                            self.copy_selection(ctx);
-                        } else if modifiers.shift && key == Key::V {
-                            self.paste_clipboard();
-                        } else if let Some(byte) = control_byte(key) {
-                            self.send_input(&[byte]);
-                        }
-                    } else if let Some(sequence) = key_sequence(key) {
-                        if self.terminal.application_cursor
-                            && matches!(
-                                key,
-                                Key::ArrowUp
-                                    | Key::ArrowDown
-                                    | Key::ArrowLeft
-                                    | Key::ArrowRight
-                                    | Key::Home
-                                    | Key::End
-                            )
-                        {
-                            self.send_input(&[0x1b, b'O', sequence[sequence.len() - 1]]);
-                        } else {
-                            self.send_input(sequence);
-                        }
+                    suppress_text =
+                        keyboard::encodes_alt_text(key, modifiers, self.terminal.keyboard_flags());
+                    if (modifiers.ctrl || modifiers.command) && modifiers.shift && key == Key::C {
+                        self.copy_selection(ctx);
+                    } else if (modifiers.ctrl || modifiers.command)
+                        && modifiers.shift
+                        && key == Key::V
+                    {
+                        self.paste_clipboard();
+                    } else if let Some(bytes) = keyboard::encode_key(
+                        key,
+                        modifiers,
+                        self.terminal.keyboard_flags(),
+                        self.terminal.application_cursor,
+                    ) {
+                        self.send_input(&bytes);
                     }
                 }
                 _ => {}
@@ -309,7 +311,8 @@ impl eframe::App for RippleApp {
             self.handle_keyboard(&ctx);
         }
 
-        let terminal = ui.max_rect();
+        let window = ui.max_rect();
+        let terminal = window_chrome::draw(ui, window);
 
         self.update_terminal_size(&ctx, terminal.size());
         let response = ui.allocate_rect(terminal, egui::Sense::click_and_drag());
@@ -380,6 +383,7 @@ impl eframe::App for RippleApp {
         }
         self.draw_terminal(ui, terminal);
         self.draw_error(ui, terminal);
+        window_chrome::resize_edges(ui, window);
     }
 }
 
@@ -411,57 +415,5 @@ fn pointer_to_cell(
     CellPosition {
         row: row.clamp(0, rows.saturating_sub(1) as isize) as usize,
         column: column.clamp(0, columns.saturating_sub(1) as isize) as usize,
-    }
-}
-
-fn control_byte(key: Key) -> Option<u8> {
-    match key {
-        Key::A => Some(1),
-        Key::B => Some(2),
-        Key::C => Some(3),
-        Key::D => Some(4),
-        Key::E => Some(5),
-        Key::F => Some(6),
-        Key::G => Some(7),
-        Key::H => Some(8),
-        Key::I => Some(9),
-        Key::J => Some(10),
-        Key::K => Some(11),
-        Key::L => Some(12),
-        Key::M => Some(13),
-        Key::N => Some(14),
-        Key::O => Some(15),
-        Key::P => Some(16),
-        Key::Q => Some(17),
-        Key::R => Some(18),
-        Key::S => Some(19),
-        Key::T => Some(20),
-        Key::U => Some(21),
-        Key::V => Some(22),
-        Key::W => Some(23),
-        Key::X => Some(24),
-        Key::Y => Some(25),
-        Key::Z => Some(26),
-        Key::Space => Some(0),
-        _ => None,
-    }
-}
-
-fn key_sequence(key: Key) -> Option<&'static [u8]> {
-    match key {
-        Key::Enter => Some(b"\r"),
-        Key::Backspace => Some(b"\x7f"),
-        Key::Tab => Some(b"\t"),
-        Key::Escape => Some(b"\x1b"),
-        Key::ArrowUp => Some(b"\x1b[A"),
-        Key::ArrowDown => Some(b"\x1b[B"),
-        Key::ArrowRight => Some(b"\x1b[C"),
-        Key::ArrowLeft => Some(b"\x1b[D"),
-        Key::Home => Some(b"\x1b[H"),
-        Key::End => Some(b"\x1b[F"),
-        Key::Delete => Some(b"\x1b[3~"),
-        Key::PageUp => Some(b"\x1b[5~"),
-        Key::PageDown => Some(b"\x1b[6~"),
-        _ => None,
     }
 }

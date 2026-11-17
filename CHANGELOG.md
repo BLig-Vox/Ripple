@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+- Add a compact GTK-style title bar with Lucide minimize, maximize/restore and close icons, native window dragging and resize edges.
+- Distinguish Shift+Enter from Enter so Codex can compose multiline prompts.
+- Support bounded, per-screen Kitty keyboard disambiguation negotiation and modified navigation/function keys.
+
 ## 0.1.2
 
 - Bundle JetBrainsMono Nerd Font Mono for consistent text and terminal icon glyphs without a separate font installation.

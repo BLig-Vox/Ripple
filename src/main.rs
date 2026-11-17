@@ -1,6 +1,8 @@
 mod app;
 mod clipboard;
+mod keyboard;
 mod terminal;
+mod window_chrome;
 mod window_geometry;
 
 fn main() -> eframe::Result {
@@ -10,6 +12,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Ripple")
+            .with_decorations(false)
             .with_app_id("ripple")
             .with_icon(icon)
             .with_inner_size([1024.0, 640.0])
